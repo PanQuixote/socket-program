@@ -6,13 +6,6 @@ using std::cerr;
 using std::cout;
 using std::endl;
 
-#define SERVER_PORT 8888
-#define MSG_BUF_SIZE 1024
-
-#define MAX_CLIENT_COUNT 3
-
-int current_client_count = 0;
-SOCKET clients_socket[MAX_CLIENT_COUNT];
 
 SocketServer::SocketServer()
 {
@@ -108,22 +101,10 @@ void SocketServer::WaitForClient()
             exit(1);
         }
 
-		clients_socket[current_client_count++] = (SOCKET)sock_clt;
+        client_manager.addClient(sock_clt, buf_ip);
 
         ::CloseHandle(h_thread);
     }
-}
-
-int socketIndex(SOCKET s) {
-	int index = -1;
-	for (int i = 0; i < current_client_count; i++) {
-		if (clients_socket[i] == s) {
-			index = i;
-			break;
-		}
-	}
-
-	return index;
 }
 
 bool SocketServer::sendMessage(string msg, SOCKET receiver_socket)
@@ -146,9 +127,13 @@ bool SocketServer::broadcastMessage(string msg)
 	bool flag = true;
 
 	const char* c = msg.c_str();
-	for (int i = 0; i < current_client_count; i++) {
-		if (send(clients_socket[i], c, msg.length(), 0) == SOCKET_ERROR) {
-			cout << "fail to send message to client:  socket = " << clients_socket[i]
+	for (int i = 0; i < MAX_CLIENT_COUNT; i++) {
+        if (client_manager.isValid(i) == false) {
+            continue;
+        }
+
+		if (send(client_manager.getSocket(i), c, msg.length(), 0) == SOCKET_ERROR) {
+			cout << "fail to send message to client:  socket = " << client_manager.getSocket(i)
 				<< ", index = " << i << endl;
 
 			flag = false;
@@ -198,14 +183,14 @@ DWORD WINAPI CreateClientThread(LPVOID lpParameter)
 {
 	ThreadArg* pArg = (ThreadArg*)lpParameter;
 	SOCKET sock_clt = pArg->m_socket;
-	int socket_index = socketIndex(sock_clt);
+	int socket_index = pArg->m_pObj->socketIndex(sock_clt);
     char buf_msg[MSG_BUF_SIZE];
     int ret_val = 0;
     int snd_result = 0;
     do
     {
 		if (checksock(sock_clt) == false) {
-			current_client_count--;
+            pArg->m_pObj->deleteClient(sock_clt);
 			cout << "user " << socket_index
 			<< " connection closed..." << endl;
 			break;
@@ -219,7 +204,7 @@ DWORD WINAPI CreateClientThread(LPVOID lpParameter)
             {
                 cout << "Client " << socket_index
 					<< "requests to close the connection..." << endl;
-				current_client_count--;
+                pArg->m_pObj->deleteClient(sock_clt);
                 break;
             }
 
@@ -238,21 +223,22 @@ DWORD WINAPI CreateClientThread(LPVOID lpParameter)
         }
         else if (ret_val == 0)
         {
-			current_client_count--;
+            pArg->m_pObj->deleteClient(sock_clt);
 			cout << "user " << socket_index
 				<< " connection closed..." << endl;
         }
         else
         {
-			current_client_count--;
+            pArg->m_pObj->deleteClient(sock_clt);
             cerr << "Failed to receive message from client " << socket_index
 				<< "! Error code: " << ::GetLastError() << "\n";
 
             ::closesocket(sock_clt);
-            system("pause");
             return 1;
         }
     } while (ret_val > 0);
+
+    pArg->m_pObj->deleteClient(sock_clt);
 
     //
     ret_val = ::shutdown(sock_clt, SD_SEND);
@@ -261,8 +247,8 @@ DWORD WINAPI CreateClientThread(LPVOID lpParameter)
         cerr << "Failed to shutdown the client " << socket_index 
 			<< " socket! Error code: " << ::GetLastError() << "\n";
         ::closesocket(sock_clt);
-        system("pause");
         return 1;
     }
+
     return 0;
 }
