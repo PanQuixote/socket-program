@@ -22,6 +22,8 @@ public:
 
   bool close();
 
+  bool setIpAndPort(string ip, int port);
+
   bool sendMessage(string msg);
 
   int handleMessage(string msg);
@@ -41,6 +43,9 @@ private:
   bool initFlag;
 
   HANDLE h_thread;
+
+  string m_ip;
+  int m_port;
 
 };
 
