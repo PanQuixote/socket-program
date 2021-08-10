@@ -20,7 +20,7 @@ using namespace std;
 
 // how to use it:
 // Server s;
-// s.WaitForClient();
+// s.start();
 // do something in handleMessage();
 
 class ClientManager {
@@ -115,11 +115,15 @@ private:
 class SocketServer
 {
 public:
-    SocketServer();
+	SocketServer(bool start_after_init = false, 
+					bool block_to_wait_enter_instruct = true);
     ~SocketServer();
     SocketServer(const SocketServer &) = delete;
     SocketServer & operator=(const SocketServer &) = delete;
-    void WaitForClient();
+
+	bool init();
+
+	void start(bool block_to_wait_enter_instruct = true);
 
 	bool sendMessage(string msg, SOCKET receiver_socket = -1);
 
@@ -155,7 +159,7 @@ public:
         client_manager.clearClientInfo();
     }
 
-private:
+public:
     WORD winsock_ver;
     WSADATA wsa_data;
     SOCKET sock_svr;
@@ -168,6 +172,9 @@ private:
     char buf_ip[IP_BUF_SIZE];
 
     ClientManager client_manager;
+
+private:
+	void WaitForClient();
 };
 
 // used to be thread's arg

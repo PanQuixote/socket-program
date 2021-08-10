@@ -3,6 +3,6 @@
 int main()
 {
     SocketServer svr;
-    svr.WaitForClient();
+	svr.start();
     return 0;
 }
