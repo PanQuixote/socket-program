@@ -1,34 +1,54 @@
 #include "socketclient.h"
 
-bool initWsaData();
+
 
 DWORD WINAPI receiveMessageThread(LPVOID lpParameter);
 
 
-SocketClient::SocketClient()
+SocketClient::SocketClient(bool start_after_init,
+	bool block_to_wait_enter_instruct)
 {
-	m_ip = "127.0.0.1";
-	m_port = 8888;
+	m_ip = DEFAULT_SERVER_IP;
+	m_port = DEFAULT_PORT;
 
-	if (init() == false) {
-		cout << "client init fail" << endl;
-	}
-	else {
-		cout << "client init success" << endl;
+	initFlag = false;
+
+	if (start_after_init) {
+		if (start(block_to_wait_enter_instruct)) {
+			cout << "client init success" << endl;
+		}
+		else {
+			cout << "client init fail" << endl;
+		}
 	}
 
-	//// block
-	//while (1) {
-	//	string str;
-	//	cin >> str;
-	//	sendMessage(str);
-	//}
+
 }
 
 bool SocketClient::init()
 {
+	// if had init, return
+	if (initFlag) {
+		return true;
+	}
 
-	if (!initWsaData()) {
+	//初始化套接字库
+	WORD w_req = MAKEWORD(2, 2);//版本号
+	WSADATA wsadata;
+	int err;
+	err = WSAStartup(w_req, &wsadata);
+	if (err != 0) {
+		cout << "init WSA data fail" << endl;
+
+		initFlag = false;
+		return false;
+	}
+
+	//检测版本号
+	if (LOBYTE(wsadata.wVersion) != 2 || HIBYTE(wsadata.wHighVersion) != 2) {
+		cout << "WSA data version wrong" << endl;
+		WSACleanup();
+
 		initFlag = false;
 		return false;
 	}
@@ -43,9 +63,11 @@ bool SocketClient::init()
 	if (::connect(server_socket, (SOCKADDR*)&server_addr, sizeof(SOCKADDR)) == SOCKET_ERROR) {
 		cout << "fail to connect server" << endl;
 		WSACleanup();
+
 		initFlag = false;
 		return false;
 	}
+
 
 	// use a thread to receive from server
 	ThreadArg* pArg = new ThreadArg(this, server_socket);
@@ -55,16 +77,45 @@ bool SocketClient::init()
 		(LPVOID)pArg,
 		0,
 		nullptr);
+
 	if (h_thread == NULL) {
 		cerr << "Failed to create a new thread!Error code: " << ::WSAGetLastError() << "\n";
 		::WSACleanup();
+
 		initFlag = false;
 		return false;
 	}
 	::CloseHandle(h_thread);
 
+
 	initFlag = true;
+	return initFlag;
+}
+
+bool SocketClient::start(bool block_to_wait_enter_instruct) {
+
+	if (init()) {
+		if (block_to_wait_enter_instruct) {
+			while (1) {
+				string str;
+				cout << "enter instruct: ";
+				cin >> str;
+				if (str == "exit") {
+					exit(0);
+				}
+				sendMessage(str);
+			}
+		}
+		else {
+			return true;
+		}
+	}
+	else {
+		return false;
+	}
+
 	return true;
+
 }
 
 bool SocketClient::close()
@@ -87,23 +138,24 @@ bool SocketClient::setIpAndPort(string ip, int port)
 
 bool SocketClient::sendMessage(string msg)
 {
-	if (initFlag != true) {
+	if (!initFlag) {
 		cout << "send message fail: not init" << endl;
 		return false;
 	}
 
 	const char* c = msg.c_str();
-	if (send(server_socket, c, msg.length(), 0) == SOCKET_ERROR) {
-		cout << "fail to send message to server:  socket = " << server_socket << endl;
+	if (send(server_socket, c, MSG_BUF_SIZE, 0) == SOCKET_ERROR) {
+		cout << "fail to send message to server: server_socket = " << server_socket << ", error: " << WSAGetLastError() << endl;
 		return false;
 	}
 	return true;
 }
 
+
 // do something to handle message
 int SocketClient::handleMessage(string msg)
 {
-	cout << "receive success: " << msg << endl;
+
 	return 0;
 }
 
@@ -113,12 +165,12 @@ int SocketClient::handleMessage(string msg)
 DWORD WINAPI receiveMessageThread(LPVOID lpParameter) {
 
 	ThreadArg* pArg = (ThreadArg*)lpParameter;
-	SOCKET server_socket = pArg->m_socket;
+	int server_socket = pArg->m_socket;
 
-	char recv_buf[MAX_LENGTH];
+	char recv_buf[MSG_BUF_SIZE];
 
 	while (1) {
-		int recv_len = recv(server_socket, recv_buf, MAX_LENGTH, 0);
+		int recv_len = recv(server_socket, recv_buf, MSG_BUF_SIZE, 0);
 		if (recv_len < 0) {
 			cout << "receive fail";
 			return 1;
@@ -126,34 +178,12 @@ DWORD WINAPI receiveMessageThread(LPVOID lpParameter) {
 		}
 		else {
 			string s = recv_buf;
+			//      cout << "receive success";
 			pArg->m_pObj->handleMessage(s);
 		}
 	}
 
 	return 0;
-}
-
-bool initWsaData() {
-	//初始化套接字库
-	WORD w_req = MAKEWORD(2, 2);//版本号
-	WSADATA wsadata;
-	int err;
-	err = WSAStartup(w_req, &wsadata);
-	if (err != 0) {
-		cout << "init WSA data fail" << endl;
-		return false;
-	}
-
-	//检测版本号
-	if (LOBYTE(wsadata.wVersion) != 2 || HIBYTE(wsadata.wHighVersion) != 2) {
-		cout << "WSA data version wrong" << endl;
-		WSACleanup();
-		return false;
-	}
-	else {
-		return true;
-	}
-
 }
 
 

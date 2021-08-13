@@ -9,8 +9,8 @@ using std::endl;
 DWORD WINAPI waitForClientThread(LPVOID lpParameter);
 DWORD WINAPI createClientThread(LPVOID lpParameter);
 
-SocketServer::SocketServer(bool start_after_init, 
-							bool block_to_wait_enter_instruct)
+SocketServer::SocketServer(bool start_after_init,
+	bool block_to_wait_enter_instruct)
 {
 	if (init() == false) {
 		system("pause");
@@ -47,7 +47,7 @@ bool SocketServer::init()
 	if (ret_val != 0)
 	{
 		cerr << "WSA failed to start up!Error code: " << ::WSAGetLastError() << "\n";
-		
+
 		return false;
 	}
 	cout << "WSA started up successfully...\n";
@@ -88,10 +88,13 @@ bool SocketServer::init()
 
 	cout << "Server started successfully..." << endl;
 
+	return true;
+
 }
 
 void SocketServer::start(bool block_to_wait_enter_instruct)
 {
+	//
 	WaitForClient();
 
 	if (block_to_wait_enter_instruct) {
@@ -124,50 +127,22 @@ void SocketServer::WaitForClient()
 		exit(1);
 	}
 	::CloseHandle(w_thread);
-
-
-	//    while (true)
-	//    {
-	//        sock_clt = ::accept(sock_svr, (SOCKADDR*)&addr_clt, &addr_len);
-	//        if (sock_clt == INVALID_SOCKET)
-	//        {
-	//            cerr << "Failed to accept client!Error code: " << ::WSAGetLastError() << "\n";
-	//            ::WSACleanup();
-	//            system("pause");
-	//            exit(1);
-	//        }
-
-	//        PWSTR buf_ip_p = (PWSTR)buf_ip;
-	//        ::InetNtop(addr_clt.sin_family, &addr_clt, buf_ip_p, IP_BUF_SIZE);
-	//        cout << "A new client connected...IP address: " << buf_ip << ", port number: " << ::ntohs(addr_clt.sin_port) << endl;
-
-	//        ThreadArg* pArg = new ThreadArg(this, sock_clt);
-	//        h_thread = ::CreateThread(nullptr, 0, createClientThread, (LPVOID)pArg, 0, nullptr);
-	//        if (h_thread == NULL)
-	//        {
-	//            cerr << "Failed to create a new thread for client "<< buf_ip << " !Error code: " << ::WSAGetLastError() << "\n";
-	//            ::WSACleanup();
-	//            system("pause");
-	//            exit(1);
-	//        }
-
-	//        client_manager.addClient(sock_clt, buf_ip);
-
-	//        ::CloseHandle(h_thread);
-	//    }
 }
 
-bool SocketServer::sendMessage(string msg, SOCKET receiver_socket)
+bool SocketServer::sendMessage(string msg, int receiver_socket)
 {
 	if (receiver_socket == -1) {
 		return broadcastMessage(msg);
 	}
 
 	const char* c = msg.c_str();
-	if (send(receiver_socket, c, msg.length(), 0) == SOCKET_ERROR) {
+	if (send(receiver_socket, c, MSG_BUF_SIZE, 0) == SOCKET_ERROR) {
 		cout << "fail to send message to client:  socket = " << receiver_socket
 			<< ", index = " << socketIndex(receiver_socket) << endl;
 		return false;
+	}
+	else {
+		//    cout << "send to client:" << c;
 	}
 	return true;
 }
@@ -176,13 +151,12 @@ bool SocketServer::broadcastMessage(string msg)
 {
 	bool flag = true;
 
-	const char* c = msg.c_str();
 	for (int i = 0; i < MAX_CLIENT_COUNT; i++) {
 		if (client_manager.isValid(i) == false) {
 			continue;
 		}
 
-		if (send(client_manager.getSocket(i), c, msg.length(), 0) == SOCKET_ERROR) {
+		if (sendMessage(msg, client_manager.getSocket(i)) != true) {
 			cout << "fail to send message to client:  socket = " << client_manager.getSocket(i)
 				<< ", index = " << i << endl;
 
@@ -192,21 +166,15 @@ bool SocketServer::broadcastMessage(string msg)
 	return flag;
 }
 
-int SocketServer::handleMessage(string msg, SOCKET sender_socket)
+int SocketServer::handleMessage(string msg, int sender_socket)
 {
-	cout << "Message received: " << msg << ", socket = " << sender_socket
-		<< ", index = " << socketIndex(sender_socket) << endl;
+	// do something
 
-	if (sendMessage(msg, sender_socket)) {
-		return 0;
-	}
-	else {
-		return 1;
-	}
+	cout << "get message from user " << client_manager.socketIndex(sender_socket)
+		<< ": " << msg;
 
 	return 0;
 }
-
 
 bool checksock(int s)
 {
@@ -258,14 +226,12 @@ DWORD WINAPI waitForClientThread(LPVOID lpParameter) {
 			::WSACleanup();
 
 			return 1;
-
-			//            system("pause");
-			//            exit(1);
 		}
 
 		PWSTR buf_ip_p = (PWSTR)buf_ip;
 		::InetNtop(addr_clt.sin_family, &addr_clt, buf_ip_p, IP_BUF_SIZE);
-		cout << "A new client connected...IP address: " << buf_ip << ", port number: " << ::ntohs(addr_clt.sin_port) << endl;
+		cout << "A new client connected...port number: " << ::ntohs(addr_clt.sin_port) << endl;
+
 
 		HANDLE h_thread;
 		ThreadArg* pArg_for_client = new ThreadArg(pArg->m_pObj, sock_clt);
@@ -278,9 +244,6 @@ DWORD WINAPI waitForClientThread(LPVOID lpParameter) {
 			::WSACleanup();
 
 			return 1;
-
-			//            system("pause");
-			//            exit(1);
 		}
 
 		pArg->m_pObj->client_manager.addClient(sock_clt, buf_ip);
@@ -298,13 +261,15 @@ DWORD WINAPI createClientThread(LPVOID lpParameter)
 	int socket_index = pArg->m_pObj->socketIndex(sock_clt);
 	char buf_msg[MSG_BUF_SIZE];
 	int ret_val = 0;
-	int snd_result = 0;
+
 	do
 	{
 		if (checksock(sock_clt) == false) {
 			pArg->m_pObj->deleteClient(sock_clt);
 			cout << "user " << socket_index
-				<< " connection closed..." << endl;
+				<< " connection closed...socket = " << sock_clt << endl;
+
+
 			break;
 		}
 
@@ -317,6 +282,7 @@ DWORD WINAPI createClientThread(LPVOID lpParameter)
 				cout << "Client " << socket_index
 					<< "requests to close the connection..." << endl;
 				pArg->m_pObj->deleteClient(sock_clt);
+
 				break;
 			}
 
@@ -324,20 +290,13 @@ DWORD WINAPI createClientThread(LPVOID lpParameter)
 
 			pArg->m_pObj->handleMessage(msg, sock_clt);
 
-			//snd_result = ::send(sock_clt, buf_msg, MSG_BUF_SIZE, 0);
-			//if (snd_result == SOCKET_ERROR)
-			//{
-			//    cerr << "Failed to send message to client!Error code: " << ::GetLastError() << "\n";
-			//    ::closesocket(sock_clt);
-			//    system("pause");
-			//    return 1;
-			//}
 		}
 		else if (ret_val == 0)
 		{
 			pArg->m_pObj->deleteClient(sock_clt);
 			cout << "user " << socket_index
 				<< " connection closed..." << endl;
+
 		}
 		else
 		{
@@ -364,4 +323,3 @@ DWORD WINAPI createClientThread(LPVOID lpParameter)
 
 	return 0;
 }
-
